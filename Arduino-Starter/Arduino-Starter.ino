@@ -59,8 +59,6 @@ void loop() {
 
   // Control servo 1 using the dpad
   // 6 = left, 2 = right, 0 = up, 4 = down, 8 = center
-  // (note that you will also see the value 0 if the controller
-  //  is disconnected)
   if (RR_dpad() == 6) { // left
 
     // we can't move a servo less than 0 degrees
