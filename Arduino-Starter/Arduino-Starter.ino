@@ -1,5 +1,5 @@
 // Replace 12345 with the correct team number and then uncomment the line below.
-//#define TEAM_NUMBER 12345
+#define TEAM_NUMBER 2
 
 #ifndef TEAM_NUMBER
 #error "Define your team number with `#define TEAM_NUMBER 12345` at the top of the file."
@@ -7,105 +7,127 @@
 #error "Team number must be within 1 and 20"
 #endif
 
-void setup() {
-  Serial.begin(115200);
+// servo 1 states - set servo for each level of cargo bay
+#define HIGH 180 // top of the delivery zone
+#define MID 90   // middle of the delivery zone
+#define LOW 0    // bottom of the delivery zone 
+
+// servo 2 states - set servo swipe
+#define SWIPE 180 // top of the delivery zone
+#define NOSWIPE 0   // middle of the delivery zone
+
+// scale the joystick axis - these will be in the range [-1.0, 1.0]
+float scale(float val) {
+  return (val * val * (val < 0.0 ? -1.0 : 1.0));
 }
 
-int temp = 0;
+// combine driving for left and right motors
+void RR_setLeft(float speed) { // left side 
+  RR_setMotor1(speed);
+  RR_setMotor2(speed);
+}
+void RR_setRight(float speed) { // right side
+  RR_setMotor3(speed);
+  RR_setMotor4(speed);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  RR_setServo1(HIGH);
+  RR_setServo2(HIGH);
+}
+
+// state = 0 AUTONOMOUS
+// state = 1 TELEOP
+int state = 0; // state begins in idle
+int offset = 0; // used in case servo 1 states need modification
 
 void loop() {
-  // Read the four joystick axes
-  // These will be in the range [-1.0, 1.0]
-  float rightX = RR_axisRX();
-  float rightY = RR_axisRY();
-  float leftX  = RR_axisLX();
-  float leftY  = RR_axisLY();
 
-  // Arcade-drive scheme
-  // Left Y-axis = throttle
-  // Right X-axis = steering
-  RR_setMotor1(leftY + rightX);
-  RR_setMotor2(leftY - rightX);
-
-  // Get the button states
-  bool btnA = RR_buttonA();
-  bool btnB = RR_buttonB();
-  bool btnX = RR_buttonX();
-  bool btnY = RR_buttonY();
-  bool btnRB = RR_buttonRB();
-  bool btnLB = RR_buttonLB();
-
-  // Control motor3 port (unused on base robot) using A/B buttons
-  if (btnA) {
-    RR_setMotor3(1.0);
-  }
-  else if (btnB) {
-    RR_setMotor3(-1.0);
-  }
-  else {
-    RR_setMotor3(0.0);
+  if (RR_buttonStart()) { 
+    state ++;
+    if (state > 2){
+      state = 2;
+    }
   }
 
-  // Control motor4 port (unused on base robot) using X/Y buttons
-  if (btnX) {
-    RR_setMotor4(1.0);
+  if (state == 1){ // AUTONOMOUS
+    // follow the line
+
+    // place the cargo - cargo should already be at top level
+
+    // go back to the cargo pickup (maybe?)
+    RR_setServo2(SWIPE);
+    delay(50);
+    RR_setServo2(NOSWIPE);
+
+    // move onto teleop
   }
-  else if (btnY) {
-    RR_setMotor4(-1.0);
+  
+  if (state == 2){ // TELEOP
+
+    ////////////////////////////////////////////////////////
+    //                     CONTROLLER                     //
+    ////////////////////////////////////////////////////////
+
+    // Read the four joystick axes
+    // These will be in the range [-1.0, 1.0]
+    float rightX = scale(RR_axisRX());
+    float leftY  = scale(RR_axisLY());
+    float rightY = RR_axisRY(); // current unused
+    float leftX  = RR_axisLX(); // current unused
+
+    // Get the button states
+    bool btnA = RR_buttonA();
+    bool btnB = RR_buttonB();
+    bool btnX = RR_buttonX();
+    bool btnY = RR_buttonY();
+    bool btnRB = RR_buttonRB();
+    bool btnLB = RR_buttonLB();
+
+    ////////////////////////////////////////////////////////
+    //                       DRIVING                      //
+    ////////////////////////////////////////////////////////
+
+    // Arcade-drive scheme
+    // Left Y-axis = throttle
+    // Right X-axis = steering
+    RR_setLeft(leftY + rightX);
+    RR_setRight(leftY - rightX);
+
+    ////////////////////////////////////////////////////////
+    //                        CARGO                       //
+    ////////////////////////////////////////////////////////
+
+    // in case servo position gets altered, add an offset the driver can change
+    // 6 = left, 2 = right, 0 = up, 4 = down, 8 = center
+    if (RR_dpad() == 0) { // increase cargo level by few degrees
+      offset += 3;
+    }
+    if (RR_dpad() == 4) { // decrease cargo level by few degrees
+      offset -= 3;
+    }
+
+    // 3 different heights
+    if (btnA) {
+      RR_setServo1(HIGH + offset);
+    }
+    if (btnX){
+      RR_setServo1(MID + offset);
+    }
+    if (btnB){
+      RR_setServo1(LOW + offset);
+    }
+
+    // knock cargo off
+    if (RR_buttonRB) {
+      RR_setServo2(SWIPE);
+      delay(50);
+      RR_setServo2(NOSWIPE);
+    }
+
   }
-  else {
-    RR_setMotor4(0.0);
-  }
-
-  // Control servo 1 using the dpad
-  // 6 = left, 2 = right, 0 = up, 4 = down, 8 = center
-  if (RR_dpad() == 6) { // left
-
-    // we can't move a servo less than 0 degrees
-    if (temp > 0) temp -= 10;
-  }
-  else if (RR_dpad() == 2) { // right
-
-    // we can't move a servo past 180 degrees
-    // for continuous rotation, try using a DC motor
-    if (temp < 180) temp += 10;
-  }
-  RR_setServo1(temp);
-
-  // Control servo 2 using the shoulder buttons
-  // This example moves the servo to fixed points
-  // You can change the angles based on your mechanism
-  // (this is great for a mechanism that only has 2 states,
-  //  such as a grabber or hook)
-  if (btnRB) {
-    RR_setServo2(180);
-  }
-  else if (btnLB) {
-    RR_setServo2(0);
-  }
-
-  // we also have RR_setServo3 and RR_setServo4 available
-
-
-  // read the ultrasonic sensors
-
-  Serial.print("Ultrasonic=");
-  Serial.print(RR_getUltrasonic());
-  Serial.print(" ;; ");
-  int sensors[6];
-
-  Serial.print("Line sensors=");
-  RR_getLineSensors(sensors);
-  for (int i = 0; i < 6; ++i) {
-    Serial.print(sensors[i]);
-    Serial.print(" ");
-  }
-  Serial.print(btnA ? 1 : 0);
-  Serial.print(btnB ? 1 : 0);
-  Serial.print(btnX ? 1 : 0);
-  Serial.print(btnY ? 1 : 0);
-  Serial.println();
-
   // This is important - it sleeps for 0.02 seconds (= 50 times / second)
   // Running the code too fast will overwhelm the microcontroller and peripherals
   delay(20);
